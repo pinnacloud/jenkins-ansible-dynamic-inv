@@ -1,0 +1,81 @@
+- hosts: all
+  become: true
+  tasks:
+    - name: Install Java
+      yum:
+        name: java-11-openjdk-devel
+        state: present
+
+    - name: Add tomcat user
+      user:
+        name: tomcat
+        shell: /sbin/nologin
+
+    - name: Download Tomcat 9
+      get_url:
+        url: https://dlcdn.apache.org/tomcat/tomcat-9/v9.0.89/bin/apache-tomcat-9.0.89.tar.gz
+        dest: /tmp/apache-tomcat-9.0.89.tar.gz
+
+    - name: Copy Tomcat archive
+      copy:
+        src: /tmp/apache-tomcat-9.0.89.tar.gz
+        dest: /usr/local/
+        remote_src: yes
+
+    - name: Unpack Tomcat archive
+      unarchive:
+        src: /usr/local/apache-tomcat-9.0.89.tar.gz
+        dest: /usr/local
+        remote_src: yes
+
+    - name: Change file ownership, group, and permissions
+      file:
+        path: /usr/local/apache-tomcat-9.0.89
+        owner: tomcat
+        group: tomcat
+        recurse: yes
+        state: directory
+
+    - name: Create symbolic link for Tomcat
+      file:
+        src: /usr/local/apache-tomcat-9.0.89
+        dest: /usr/local/tomcat9
+        owner: tomcat
+        group: tomcat
+        state: link
+
+    - name: Create tomcat.service file
+      copy:
+        dest: /etc/systemd/system/tomcat.service
+        content: |
+          [Unit]
+          Description=Apache Tomcat 9
+          After=network.target
+
+          [Service]
+          User=tomcat
+          Group=tomcat
+          Type=forking
+
+          Environment=JAVA_HOME=/usr/lib/jvm/jre
+          Environment=CATALINA_PID=/usr/local/tomcat9/temp/tomcat.pid
+          Environment=CATALINA_HOME=/usr/local/tomcat9
+          Environment=CATALINA_BASE=/usr/local/tomcat9
+          Environment='CATALINA_OPTS=-Xms512M -Xmx1024M -server -XX:+UseParallelGC'
+          Environment='JAVA_OPTS=-Djava.awt.headless=true -Djava.security.egd=file:/dev/./urandom'
+
+          ExecStart=/usr/local/tomcat9/bin/startup.sh
+          ExecStop=/usr/local/tomcat9/bin/shutdown.sh
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Reload systemd daemon
+      systemd:
+        daemon_reload: yes
+
+    - name: Enable and start Tomcat service
+      systemd:
+        name: tomcat
+        state: started
+        enabled: yes
